@@ -1,6 +1,11 @@
-function doGet() {
-  return HtmlService.createTemplateFromFile('index')
-    .evaluate()
+function doGet(e) {
+  var params = (e && e.parameter) || {};
+  var template = HtmlService.createTemplateFromFile('index');
+  template.deepLinkTab = String(params.tab || '').trim();
+  template.deepLinkForceReload = String(params.forceReload || '').trim();
+  template.deepLinkApp = String(params.app || '').trim();
+  template.deepLinkRequestId = String(params.requestId || '').trim();
+  return template.evaluate()
     .setTitle('申請ポータル')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);

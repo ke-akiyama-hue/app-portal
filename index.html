@@ -91,7 +91,11 @@
     @media (max-width: 760px) { .admin-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
-<body>
+<body
+  data-link-tab="<?= deepLinkTab || '' ?>"
+  data-force-reload="<?= deepLinkForceReload || '' ?>"
+  data-link-app="<?= deepLinkApp || '' ?>"
+  data-link-request-id="<?= deepLinkRequestId || '' ?>">
 
 <div id="loading" class="loading">読み込み中...</div>
 <div id="toast" class="toast"></div>
@@ -167,7 +171,12 @@
   var currentMode = 'view';
 
   document.addEventListener('DOMContentLoaded', function() {
-    google.script.run.withSuccessHandler(onInit).withFailureHandler(onError).getInitialAppData();
+    var deepLink = getPortalDeepLinkParams_();
+    if (deepLink.forceReload === '1') {
+      google.script.run.withSuccessHandler(onInit).withFailureHandler(onError).refreshAppData();
+    } else {
+      google.script.run.withSuccessHandler(onInit).withFailureHandler(onError).getInitialAppData();
+    }
     document.addEventListener('visibilitychange', function() {
       if (document.visibilityState === 'visible' && appData) refresh(false);
     });
@@ -190,9 +199,19 @@
     applyDeepLinkFromUrl_();
   }
 
+  function getPortalDeepLinkParams_() {
+    var body = document.body;
+    return {
+      tab: String(body.getAttribute('data-link-tab') || '').trim(),
+      forceReload: String(body.getAttribute('data-force-reload') || '').trim(),
+      app: String(body.getAttribute('data-link-app') || '').trim(),
+      requestId: String(body.getAttribute('data-link-request-id') || '').trim()
+    };
+  }
+
   function applyDeepLinkFromUrl_() {
-    var params = new URLSearchParams(window.location.search);
-    var tab = params.get('tab');
+    var params = getPortalDeepLinkParams_();
+    var tab = params.tab;
     if (!tab) return;
 
     var btn = document.querySelector('[data-tab="' + tab + '"]');
@@ -200,8 +219,8 @@
     btn.click();
 
     if (tab === 'approval') {
-      var appCode = params.get('app');
-      var requestId = params.get('requestId');
+      var appCode = params.app;
+      var requestId = params.requestId;
       if (appCode && requestId) {
         setTimeout(function() {
           openDetail(appCode, requestId, 'approval');
@@ -332,6 +351,7 @@
     if (item.requestId) {
       url += (url.indexOf('?') === -1 ? '?' : '&') + 'leaveRequestId=' + encodeURIComponent(item.requestId);
     }
+    url += (url.indexOf('?') === -1 ? '?' : '&') + 'from=portal';
     try {
       window.top.location.href = url;
     } catch (e) {
