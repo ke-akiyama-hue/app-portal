@@ -86,7 +86,7 @@ function isLeavePendingForPortalUser_(item, userEmail) {
   userEmail = String(userEmail || '').trim().toLowerCase();
   if (!userEmail) return false;
   if (!isLeaveWaitingStatusForPortal_(item.status)) return false;
-  return String(item.approverEmail || '').trim().toLowerCase() === userEmail;
+  return isLeaveCurrentStepCandidateForPortal_(item, userEmail);
 }
 
 function purchaseToPortalItem_(purchase, app) {
@@ -132,11 +132,18 @@ function isPurchaseMasterPendingNotice_(item, employee) {
 
 function canViewApplication_(app, record, userEmail) {
   if (!record || !userEmail) return false;
-  if (String(app.dataType || '').trim().toLowerCase() === 'purchase' &&
+  var dataType = String((app && app.dataType) || record.dataType || '').trim().toLowerCase();
+  if (dataType === 'purchase' &&
       record.status === PURCHASE_STATUS.APPROVED &&
       record.masterStatus === 'マスタ未登録あり' &&
       employeeHasRole_(findEmployeeByEmail(userEmail), 'ワークフロー管理者')) {
     return true;
+  }
+  if (dataType === 'leave') {
+    var leaveEmail = String(userEmail || '').trim().toLowerCase();
+    if (String(record.applicantEmail || '').trim().toLowerCase() === leaveEmail) return true;
+    if (!isLeaveWaitingStatusForPortal_(record.status)) return false;
+    return isLeaveCurrentStepCandidateForPortal_(record, leaveEmail);
   }
   return record.applicantEmail === userEmail || record.approverEmail === userEmail;
 }
