@@ -95,7 +95,8 @@
   data-link-tab="<?= deepLinkTab || '' ?>"
   data-force-reload="<?= deepLinkForceReload || '' ?>"
   data-link-app="<?= deepLinkApp || '' ?>"
-  data-link-request-id="<?= deepLinkRequestId || '' ?>">
+  data-link-request-id="<?= deepLinkRequestId || '' ?>"
+  data-web-app-url="<?= webAppUrl || '' ?>">
 
 <div id="loading" class="loading">読み込み中...</div>
 <div id="toast" class="toast"></div>
@@ -313,7 +314,8 @@
         var appCode = c.getAttribute('data-app');
         var requestId = c.getAttribute('data-id');
         if (c.getAttribute('data-type') === 'leave') {
-          openLeaveRequestApp_(findPortalListItem_(appCode, requestId) || { requestId: requestId });
+          var listed = findPortalListItem_(appCode, requestId) || { requestId: requestId };
+          openLeaveRequestApp_(listed, mode === 'approval' ? { portalMode: 'approval' } : null);
           return;
         }
         openDetail(appCode, requestId, mode);
@@ -341,8 +343,13 @@
     return '';
   }
 
-  function openLeaveRequestApp_(item) {
+  function getPortalWebAppUrl_() {
+    return String(document.body.getAttribute('data-web-app-url') || '').trim();
+  }
+
+  function openLeaveRequestApp_(item, options) {
     item = item || {};
+    options = options || {};
     var url = item.webAppUrl || findLeaveWebAppUrl_();
     if (!url) {
       toast('休暇届出申請のURLが未設定です。', true);
@@ -352,6 +359,11 @@
       url += (url.indexOf('?') === -1 ? '?' : '&') + 'leaveRequestId=' + encodeURIComponent(item.requestId);
     }
     url += (url.indexOf('?') === -1 ? '?' : '&') + 'from=portal';
+    if (options.portalMode === 'approval') {
+      url += '&portalMode=approval';
+      var returnUrl = getPortalWebAppUrl_();
+      if (returnUrl) url += '&returnUrl=' + encodeURIComponent(returnUrl);
+    }
     try {
       window.top.location.href = url;
     } catch (e) {
@@ -436,7 +448,7 @@
   function openDetail(appCode, requestId, mode) {
     var listed = findPortalListItem_(appCode, requestId);
     if (listed && listed.dataType === 'leave') {
-      openLeaveRequestApp_(listed);
+      openLeaveRequestApp_(listed, mode === 'approval' ? { portalMode: 'approval' } : null);
       return;
     }
     currentMode = mode;
