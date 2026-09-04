@@ -178,14 +178,15 @@ function getPortalInitialData(options) {
     console.log('[portal-perf] getPortalInitialData: cache=skip (force reload)');
   }
 
-  var data = buildPortalInitialData_();
+  var data = buildPortalInitialData_(options);
   if (userEmail) {
     putCachedJson_(portalDataCacheKey_(userEmail), data, PORTAL_DATA_CACHE_TTL_SEC);
   }
   return data;
 }
 
-function buildPortalInitialData_() {
+function buildPortalInitialData_(options) {
+  options = options || {};
   var totalMark = portalPerfStart_('buildPortalInitialData_');
   var userEmail = getCurrentUserEmail_();
 
@@ -203,7 +204,10 @@ function buildPortalInitialData_() {
     portalPerfEnd_(appsMark, 'apps=' + apps.length);
 
     var collectMark = portalPerfStart_('collectAllApps');
-    collectPortalItemsFromApps_(apps, { useAppCache: true }).forEach(function(item) {
+    collectPortalItemsFromApps_(apps, {
+      useAppCache: true,
+      preferDirectRead: options.preferDirectRead === true
+    }).forEach(function(item) {
       if (item.dataType === 'leave') {
         var leaveEmail = String(userEmail || '').trim().toLowerCase();
         if (String(item.applicantEmail || '').trim().toLowerCase() === leaveEmail) {
@@ -259,7 +263,7 @@ function buildPortalInitialData_() {
 
 function refreshPortalData() {
   clearPortalDataCache_(getCurrentUserEmail_());
-  return getPortalInitialData({ useCache: false });
+  return getPortalInitialData({ useCache: false, preferDirectRead: true });
 }
 
 function getPendingPurchaseMasterCandidatesForPortal_() {

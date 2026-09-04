@@ -75,7 +75,10 @@ function fetchPortalSheetValuesParallel_(apps) {
         continue;
       }
       var body = JSON.parse(resp.getContentText());
-      result[app.appCode] = body.values || [];
+      var values = body.values || [];
+      // ヘッダーのみ／空配列は成功扱いにしない。承認直後の Sheets API が一瞬空を返すと
+      // 休暇0件としてキャッシュされ、他申請まで承認待ちから消える。
+      result[app.appCode] = isPortalParallelSheetValuesUsable_(values) ? values : null;
     }
     return result;
   } catch (e) {
@@ -83,6 +86,10 @@ function fetchPortalSheetValuesParallel_(apps) {
     console.log('[portal-perf] fetchPortalSheetValuesParallel_ failed (SpreadsheetApp fallback): ' + e.message);
     return fallback;
   }
+}
+
+function isPortalParallelSheetValuesUsable_(values) {
+  return !!(values && values.length >= 2);
 }
 
 function authorizePortalParallelRead_() {
@@ -154,11 +161,18 @@ function parsePortalItemsFromSheetValues_(app, values) {
 function collectPortalItemsFromApps_(apps, options) {
   options = options || {};
   var useAppCache = options.useAppCache !== false;
+  var preferDirectRead = options.preferDirectRead === true;
   var itemsByApp = {};
   var appsToFetch = [];
+  var directApps = [];
 
   apps.forEach(function(app) {
     var code = app.appCode;
+    var dataType = String(app.dataType || '').trim().toLowerCase();
+    if (preferDirectRead && dataType === 'leave') {
+      directApps.push(app);
+      return;
+    }
     if (useAppCache) {
       var cacheMark = portalPerfStart_('collectPortalItems.cache_' + portalPerfAppLabel_(app));
       var cached = getCachedJson_(portalAppItemsCacheKey_(code));
@@ -178,7 +192,7 @@ function collectPortalItemsFromApps_(apps, options) {
 
     appsToFetch.forEach(function(app) {
       var values = valuesByApp[app.appCode];
-      if (values === null || values === undefined) {
+      if (!isPortalParallelSheetValuesUsable_(values)) {
         needFallback.push(app);
         return;
       }
@@ -200,6 +214,14 @@ function collectPortalItemsFromApps_(apps, options) {
       itemsByApp[app.appCode] = items;
     });
   }
+
+  directApps.forEach(function(app) {
+    var items = collectItemsFromApp_(app, null);
+    if (useAppCache) {
+      putCachedJson_(portalAppItemsCacheKey_(app.appCode), items, PORTAL_APP_ITEMS_CACHE_TTL_SEC);
+    }
+    itemsByApp[app.appCode] = items;
+  });
 
   var all = [];
   apps.forEach(function(app) {
