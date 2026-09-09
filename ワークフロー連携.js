@@ -169,6 +169,119 @@ function resolveWorkflowStepApprovers_(step, applicantEmail) {
   return { emails: emails, primaryEmail: emails[0], approverCount: emails.length };
 }
 
+function leaveStepNameExactMatch_(storedName, routeStepName) {
+  storedName = String(storedName || '').trim();
+  routeStepName = String(routeStepName || '').trim();
+  return !!(storedName && routeStepName && storedName === routeStepName);
+}
+
+function leaveStepNameSuffixMatch_(storedName, routeStepName) {
+  storedName = String(storedName || '').trim();
+  routeStepName = String(routeStepName || '').trim();
+  if (!storedName || !routeStepName) return false;
+  if (storedName === routeStepName) return true;
+  var storedKey = storedName.replace(/承認$/, '');
+  var routeKey = routeStepName.replace(/承認$/, '');
+  if (!storedKey || !routeKey) return false;
+  if (storedKey === '承認' || routeKey === '承認') return false;
+  return storedKey === routeKey;
+}
+
+function findPortalLeaveWorkflowStepByName_(routeId, stepName) {
+  routeId = String(routeId || '').trim();
+  stepName = String(stepName || '').trim();
+  if (!routeId || !stepName) return null;
+  var steps = loadWorkflowSteps_()
+    .filter(function(s) { return s.routeId === routeId; })
+    .sort(function(a, b) { return a.stepNo - b.stepNo; });
+  var i;
+  for (i = 0; i < steps.length; i++) {
+    if (leaveStepNameExactMatch_(stepName, steps[i].stepName)) return steps[i];
+  }
+  for (i = 0; i < steps.length; i++) {
+    if (leaveStepNameSuffixMatch_(stepName, steps[i].stepName)) return steps[i];
+  }
+  return null;
+}
+
+function resolveLeaveDeptHeadApproverEmails_(step, applicantEmail) {
+  var applicant = findEmployeeByEmail(applicantEmail) || {};
+  var office = wfNormalizeOrg_(step.targetOffice, applicant.office);
+  var department = wfNormalizeOrg_(step.targetDepartment, applicant.department);
+  var employees = loadEmployeesFromSheet();
+  var kacho = wfUniqueEmails_(wfFilterByRoleOrg_(employees, office, department, '課長'));
+  if (kacho.length) return kacho;
+  return wfUniqueEmails_(wfFilterByRoleOrg_(employees, office, department, '次長'));
+}
+
+function normalizeLeaveApproverEmails_(emails) {
+  var seen = {};
+  var out = [];
+  (emails || []).forEach(function(email) {
+    var v = String(email || '').trim().toLowerCase();
+    if (!v || seen[v]) return;
+    seen[v] = true;
+    out.push(v);
+  });
+  return out;
+}
+
+function leaveApproverEmailsInclude_(emails, userEmail) {
+  userEmail = String(userEmail || '').trim().toLowerCase();
+  if (!userEmail || !emails || !emails.length) return false;
+  for (var i = 0; i < emails.length; i++) {
+    if (String(emails[i] || '').trim().toLowerCase() === userEmail) return true;
+  }
+  return false;
+}
+
+function resolveLeaveCurrentStepApproverEmails_(applicantEmail, routeId, currentStepName) {
+  var cacheKey = [
+    String(applicantEmail || '').trim().toLowerCase(),
+    String(routeId || ''),
+    String(currentStepName || '')
+  ].join('\t');
+  if (!resolveLeaveCurrentStepApproverEmails_._cache) {
+    resolveLeaveCurrentStepApproverEmails_._cache = {};
+  }
+  var cache = resolveLeaveCurrentStepApproverEmails_._cache;
+  if (Object.prototype.hasOwnProperty.call(cache, cacheKey)) {
+    return cache[cacheKey];
+  }
+
+  var step = findPortalLeaveWorkflowStepByName_(routeId, currentStepName);
+  var emails = [];
+  if (step) {
+    if (String(step.approverType || '').trim() === '部署長') {
+      emails = normalizeLeaveApproverEmails_(resolveLeaveDeptHeadApproverEmails_(step, applicantEmail));
+    } else {
+      var match = resolveWorkflowStepApprovers_(step, applicantEmail);
+      if (match && match.emails && match.emails.length) {
+        emails = normalizeLeaveApproverEmails_(match.emails);
+      }
+    }
+  }
+  cache[cacheKey] = emails;
+  return emails;
+}
+
+function isLeaveCurrentStepCandidateForPortal_(item, userEmail) {
+  userEmail = String(userEmail || '').trim().toLowerCase();
+  if (!item || !userEmail) return false;
+  // 単一承認者の高速パス（一覧の件数分 WF 再解決を避ける）
+  var saved = String(item.approverEmail || item.currentApproverEmail || '').trim().toLowerCase();
+  if (saved && saved === userEmail) return true;
+  var emails = resolveLeaveCurrentStepApproverEmails_(
+    item.applicantEmail,
+    item.routeId,
+    item.currentStepName
+  );
+  if (emails && emails.length) {
+    return leaveApproverEmailsInclude_(emails, userEmail);
+  }
+  return false;
+}
+
 function explainStepResolveFailure_(step, applicantEmail) {
   step = step || {};
   var type = String(step.approverType || '').trim();

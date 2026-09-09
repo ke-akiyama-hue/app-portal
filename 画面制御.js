@@ -5,6 +5,11 @@ function doGet(e) {
   template.deepLinkForceReload = String(params.forceReload || '').trim();
   template.deepLinkApp = String(params.app || '').trim();
   template.deepLinkRequestId = String(params.requestId || '').trim();
+  template.deepLinkHideRequestId = String(params.hideRequestId || '').trim();
+  template.webAppUrl = '';
+  try {
+    template.webAppUrl = String(ScriptApp.getService().getUrl() || '').trim();
+  } catch (err) { /* ignore */ }
   return template.evaluate()
     .setTitle('申請ポータル')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')

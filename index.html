@@ -95,7 +95,9 @@
   data-link-tab="<?= deepLinkTab || '' ?>"
   data-force-reload="<?= deepLinkForceReload || '' ?>"
   data-link-app="<?= deepLinkApp || '' ?>"
-  data-link-request-id="<?= deepLinkRequestId || '' ?>">
+  data-link-request-id="<?= deepLinkRequestId || '' ?>"
+  data-hide-request-id="<?= deepLinkHideRequestId || '' ?>"
+  data-web-app-url="<?= webAppUrl || '' ?>">
 
 <div id="loading" class="loading">読み込み中...</div>
 <div id="toast" class="toast"></div>
@@ -172,8 +174,12 @@
 
   document.addEventListener('DOMContentLoaded', function() {
     var deepLink = getPortalDeepLinkParams_();
-    if (deepLink.forceReload === '1') {
-      google.script.run.withSuccessHandler(onInit).withFailureHandler(onError).refreshAppData();
+    if (deepLink.hideRequestId || deepLink.forceReload === '1') {
+      // 操作直後はキャッシュで先に描画し、直読の全件再取得は裏で行う
+      google.script.run.withSuccessHandler(function(data) {
+        onInit(data);
+        refreshPortalAfterAction_();
+      }).withFailureHandler(onError).getInitialAppData();
     } else {
       google.script.run.withSuccessHandler(onInit).withFailureHandler(onError).getInitialAppData();
     }
@@ -184,6 +190,7 @@
 
   function onInit(data) {
     appData = data;
+    hidePendingRequestId_(getPortalDeepLinkParams_().hideRequestId);
     document.getElementById('loading').style.display = 'none';
     var emp = data.employee ? data.employee.name + ' / ' : '';
     document.getElementById('userInfo').textContent = emp + (data.userEmail || '');
@@ -199,14 +206,43 @@
     applyDeepLinkFromUrl_();
   }
 
+  function hidePendingRequestId_(requestId) {
+    requestId = String(requestId || '').trim();
+    if (!requestId || !appData) return;
+    appData.pendingApprovals = (appData.pendingApprovals || []).filter(function(it) {
+      return String(it.requestId) !== requestId;
+    });
+  }
+
+  function refreshPortalAfterAction_() {
+    google.script.run.withSuccessHandler(function(data) {
+      applyRefresh(data);
+    }).withFailureHandler(onError).refreshAppData();
+  }
+
   function getPortalDeepLinkParams_() {
     var body = document.body;
     return {
       tab: String(body.getAttribute('data-link-tab') || '').trim(),
       forceReload: String(body.getAttribute('data-force-reload') || '').trim(),
       app: String(body.getAttribute('data-link-app') || '').trim(),
-      requestId: String(body.getAttribute('data-link-request-id') || '').trim()
+      requestId: String(body.getAttribute('data-link-request-id') || '').trim(),
+      hideRequestId: String(body.getAttribute('data-hide-request-id') || '').trim()
     };
+  }
+
+  function activateTab(tab, options) {
+    options = options || {};
+    var btn = document.querySelector('[data-tab="' + tab + '"]');
+    if (!btn) return;
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+    btn.classList.add('active');
+    var panel = document.getElementById('panel-' + tab);
+    if (panel) panel.classList.add('active');
+    if (options.skipRefresh) return;
+    if (tab === 'list' || tab === 'approval') refresh(false);
+    if (tab === 'masters') loadPendingMasters();
   }
 
   function applyDeepLinkFromUrl_() {
@@ -214,9 +250,9 @@
     var tab = params.tab;
     if (!tab) return;
 
-    var btn = document.querySelector('[data-tab="' + tab + '"]');
-    if (!btn) return;
-    btn.click();
+    // forceReload 直後に tab ボタン click → refresh(false) → getInitialAppData すると、
+    // いま破棄して再取得した一覧を、不完全なキャッシュで上書きしうる。
+    activateTab(tab, { skipRefresh: true });
 
     if (tab === 'approval') {
       var appCode = params.app;
@@ -284,13 +320,7 @@
   function bindTabs() {
     document.querySelectorAll('.tab-btn').forEach(function(btn) {
       btn.onclick = function() {
-        var tab = btn.getAttribute('data-tab');
-        document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
-        document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
-        btn.classList.add('active');
-        document.getElementById('panel-' + tab).classList.add('active');
-        if (tab === 'list' || tab === 'approval') refresh(false);
-        if (tab === 'masters') loadPendingMasters();
+        activateTab(btn.getAttribute('data-tab'));
       };
     });
   }
@@ -313,7 +343,8 @@
         var appCode = c.getAttribute('data-app');
         var requestId = c.getAttribute('data-id');
         if (c.getAttribute('data-type') === 'leave') {
-          openLeaveRequestApp_(findPortalListItem_(appCode, requestId) || { requestId: requestId });
+          var listed = findPortalListItem_(appCode, requestId) || { requestId: requestId };
+          openLeaveRequestApp_(listed, mode === 'approval' ? { portalMode: 'approval' } : null);
           return;
         }
         openDetail(appCode, requestId, mode);
@@ -341,8 +372,13 @@
     return '';
   }
 
-  function openLeaveRequestApp_(item) {
+  function getPortalWebAppUrl_() {
+    return String(document.body.getAttribute('data-web-app-url') || '').trim();
+  }
+
+  function openLeaveRequestApp_(item, options) {
     item = item || {};
+    options = options || {};
     var url = item.webAppUrl || findLeaveWebAppUrl_();
     if (!url) {
       toast('休暇届出申請のURLが未設定です。', true);
@@ -352,6 +388,11 @@
       url += (url.indexOf('?') === -1 ? '?' : '&') + 'leaveRequestId=' + encodeURIComponent(item.requestId);
     }
     url += (url.indexOf('?') === -1 ? '?' : '&') + 'from=portal';
+    if (options.portalMode === 'approval') {
+      url += '&portalMode=approval';
+      var returnUrl = getPortalWebAppUrl_();
+      if (returnUrl) url += '&returnUrl=' + encodeURIComponent(returnUrl);
+    }
     try {
       window.top.location.href = url;
     } catch (e) {
@@ -436,7 +477,7 @@
   function openDetail(appCode, requestId, mode) {
     var listed = findPortalListItem_(appCode, requestId);
     if (listed && listed.dataType === 'leave') {
-      openLeaveRequestApp_(listed);
+      openLeaveRequestApp_(listed, mode === 'approval' ? { portalMode: 'approval' } : null);
       return;
     }
     currentMode = mode;
