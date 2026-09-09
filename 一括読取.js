@@ -158,10 +158,14 @@ function parsePortalItemsFromSheetValues_(app, values) {
   return [];
 }
 
+function storePortalAppItemsCache_(appCode, items) {
+  putCachedJson_(portalAppItemsCacheKey_(appCode), items, PORTAL_APP_ITEMS_CACHE_TTL_SEC);
+}
+
 function collectPortalItemsFromApps_(apps, options) {
   options = options || {};
-  var useAppCache = options.useAppCache !== false;
   var preferDirectRead = options.preferDirectRead === true;
+  var useAppCache = options.useAppCache !== false && !preferDirectRead;
   var itemsByApp = {};
   var appsToFetch = [];
   var directApps = [];
@@ -169,6 +173,7 @@ function collectPortalItemsFromApps_(apps, options) {
   apps.forEach(function(app) {
     var code = app.appCode;
     var dataType = String(app.dataType || '').trim().toLowerCase();
+    // 操作直後はキャッシュを使わず直読。休暇は書込直後の空応答を避けるため SpreadsheetApp 直読
     if (preferDirectRead && dataType === 'leave') {
       directApps.push(app);
       return;
@@ -199,27 +204,21 @@ function collectPortalItemsFromApps_(apps, options) {
       var parseMark = portalPerfStart_('collectPortalItems.parse_' + portalPerfAppLabel_(app));
       var items = parsePortalItemsFromSheetValues_(app, values);
       portalPerfEnd_(parseMark, 'items=' + items.length);
-      if (useAppCache) {
-        putCachedJson_(portalAppItemsCacheKey_(app.appCode), items, PORTAL_APP_ITEMS_CACHE_TTL_SEC);
-      }
+      storePortalAppItemsCache_(app.appCode, items);
       itemsByApp[app.appCode] = items;
     });
     portalPerfEnd_(fetchMark, 'fetched=' + appsToFetch.length + ' fallback=' + needFallback.length);
 
     needFallback.forEach(function(app) {
       var items = collectItemsFromApp_(app, null);
-      if (useAppCache) {
-        putCachedJson_(portalAppItemsCacheKey_(app.appCode), items, PORTAL_APP_ITEMS_CACHE_TTL_SEC);
-      }
+      storePortalAppItemsCache_(app.appCode, items);
       itemsByApp[app.appCode] = items;
     });
   }
 
   directApps.forEach(function(app) {
     var items = collectItemsFromApp_(app, null);
-    if (useAppCache) {
-      putCachedJson_(portalAppItemsCacheKey_(app.appCode), items, PORTAL_APP_ITEMS_CACHE_TTL_SEC);
-    }
+    storePortalAppItemsCache_(app.appCode, items);
     itemsByApp[app.appCode] = items;
   });
 

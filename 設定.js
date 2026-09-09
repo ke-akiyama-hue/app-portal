@@ -69,7 +69,7 @@ var MASTER_CACHE_TTL_SEC = 600;
 /** ポータル初期データ（申請一覧・承認待ち）のキャッシュ秒数 */
 var PORTAL_DATA_CACHE_TTL_SEC = 120;
 
-/** 業務アプリ別ポータル一覧（全ユーザー共通）のキャッシュ秒数 */
+/** 業務アプリ別ポータル一覧（全ユーザー共通）のキャッシュ秒数。通常一覧はこれを使い、操作直後だけ直読して書き戻す */
 var PORTAL_APP_ITEMS_CACHE_TTL_SEC = 120;
 
 function portalDataCacheKey_(userEmail) {

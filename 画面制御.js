@@ -5,6 +5,7 @@ function doGet(e) {
   template.deepLinkForceReload = String(params.forceReload || '').trim();
   template.deepLinkApp = String(params.app || '').trim();
   template.deepLinkRequestId = String(params.requestId || '').trim();
+  template.deepLinkHideRequestId = String(params.hideRequestId || '').trim();
   template.webAppUrl = '';
   try {
     template.webAppUrl = String(ScriptApp.getService().getUrl() || '').trim();

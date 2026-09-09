@@ -168,14 +168,13 @@ function getPortalInitialData(options) {
     var cached = getCachedJson_(portalDataCacheKey_(userEmail));
     portalPerfEnd_(cacheMark, cached ? 'hit' : 'miss');
     if (cached) {
-      Logger.log('[portal-perf] getPortalInitialData: cache=hit my=' +
-        (cached.myApplications || []).length + ' pending=' + (cached.pendingApprovals || []).length);
+      Logger.log('[portal-perf] getPortalInitialData: cache=hit');
       console.log('[portal-perf] getPortalInitialData: cache=hit');
       return cached;
     }
   } else {
-    Logger.log('[portal-perf] getPortalInitialData: cache=skip (force reload)');
-    console.log('[portal-perf] getPortalInitialData: cache=skip (force reload)');
+    Logger.log('[portal-perf] getPortalInitialData: cache=skip (direct read)');
+    console.log('[portal-perf] getPortalInitialData: cache=skip (direct read)');
   }
 
   var data = buildPortalInitialData_(options);
@@ -205,7 +204,7 @@ function buildPortalInitialData_(options) {
 
     var collectMark = portalPerfStart_('collectAllApps');
     collectPortalItemsFromApps_(apps, {
-      useAppCache: true,
+      useAppCache: options.useAppCache !== false,
       preferDirectRead: options.preferDirectRead === true
     }).forEach(function(item) {
       if (item.dataType === 'leave') {

@@ -96,6 +96,7 @@
   data-force-reload="<?= deepLinkForceReload || '' ?>"
   data-link-app="<?= deepLinkApp || '' ?>"
   data-link-request-id="<?= deepLinkRequestId || '' ?>"
+  data-hide-request-id="<?= deepLinkHideRequestId || '' ?>"
   data-web-app-url="<?= webAppUrl || '' ?>">
 
 <div id="loading" class="loading">読み込み中...</div>
@@ -173,8 +174,12 @@
 
   document.addEventListener('DOMContentLoaded', function() {
     var deepLink = getPortalDeepLinkParams_();
-    if (deepLink.forceReload === '1') {
-      google.script.run.withSuccessHandler(onInit).withFailureHandler(onError).refreshAppData();
+    if (deepLink.hideRequestId || deepLink.forceReload === '1') {
+      // 操作直後はキャッシュで先に描画し、直読の全件再取得は裏で行う
+      google.script.run.withSuccessHandler(function(data) {
+        onInit(data);
+        refreshPortalAfterAction_();
+      }).withFailureHandler(onError).getInitialAppData();
     } else {
       google.script.run.withSuccessHandler(onInit).withFailureHandler(onError).getInitialAppData();
     }
@@ -185,6 +190,7 @@
 
   function onInit(data) {
     appData = data;
+    hidePendingRequestId_(getPortalDeepLinkParams_().hideRequestId);
     document.getElementById('loading').style.display = 'none';
     var emp = data.employee ? data.employee.name + ' / ' : '';
     document.getElementById('userInfo').textContent = emp + (data.userEmail || '');
@@ -200,13 +206,28 @@
     applyDeepLinkFromUrl_();
   }
 
+  function hidePendingRequestId_(requestId) {
+    requestId = String(requestId || '').trim();
+    if (!requestId || !appData) return;
+    appData.pendingApprovals = (appData.pendingApprovals || []).filter(function(it) {
+      return String(it.requestId) !== requestId;
+    });
+  }
+
+  function refreshPortalAfterAction_() {
+    google.script.run.withSuccessHandler(function(data) {
+      applyRefresh(data);
+    }).withFailureHandler(onError).refreshAppData();
+  }
+
   function getPortalDeepLinkParams_() {
     var body = document.body;
     return {
       tab: String(body.getAttribute('data-link-tab') || '').trim(),
       forceReload: String(body.getAttribute('data-force-reload') || '').trim(),
       app: String(body.getAttribute('data-link-app') || '').trim(),
-      requestId: String(body.getAttribute('data-link-request-id') || '').trim()
+      requestId: String(body.getAttribute('data-link-request-id') || '').trim(),
+      hideRequestId: String(body.getAttribute('data-hide-request-id') || '').trim()
     };
   }
 

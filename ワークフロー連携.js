@@ -236,19 +236,41 @@ function leaveApproverEmailsInclude_(emails, userEmail) {
 }
 
 function resolveLeaveCurrentStepApproverEmails_(applicantEmail, routeId, currentStepName) {
-  var step = findPortalLeaveWorkflowStepByName_(routeId, currentStepName);
-  if (!step) return [];
-  if (String(step.approverType || '').trim() === '部署長') {
-    return normalizeLeaveApproverEmails_(resolveLeaveDeptHeadApproverEmails_(step, applicantEmail));
+  var cacheKey = [
+    String(applicantEmail || '').trim().toLowerCase(),
+    String(routeId || ''),
+    String(currentStepName || '')
+  ].join('\t');
+  if (!resolveLeaveCurrentStepApproverEmails_._cache) {
+    resolveLeaveCurrentStepApproverEmails_._cache = {};
   }
-  var match = resolveWorkflowStepApprovers_(step, applicantEmail);
-  if (!match || !match.emails || !match.emails.length) return [];
-  return normalizeLeaveApproverEmails_(match.emails);
+  var cache = resolveLeaveCurrentStepApproverEmails_._cache;
+  if (Object.prototype.hasOwnProperty.call(cache, cacheKey)) {
+    return cache[cacheKey];
+  }
+
+  var step = findPortalLeaveWorkflowStepByName_(routeId, currentStepName);
+  var emails = [];
+  if (step) {
+    if (String(step.approverType || '').trim() === '部署長') {
+      emails = normalizeLeaveApproverEmails_(resolveLeaveDeptHeadApproverEmails_(step, applicantEmail));
+    } else {
+      var match = resolveWorkflowStepApprovers_(step, applicantEmail);
+      if (match && match.emails && match.emails.length) {
+        emails = normalizeLeaveApproverEmails_(match.emails);
+      }
+    }
+  }
+  cache[cacheKey] = emails;
+  return emails;
 }
 
 function isLeaveCurrentStepCandidateForPortal_(item, userEmail) {
   userEmail = String(userEmail || '').trim().toLowerCase();
   if (!item || !userEmail) return false;
+  // 単一承認者の高速パス（一覧の件数分 WF 再解決を避ける）
+  var saved = String(item.approverEmail || item.currentApproverEmail || '').trim().toLowerCase();
+  if (saved && saved === userEmail) return true;
   var emails = resolveLeaveCurrentStepApproverEmails_(
     item.applicantEmail,
     item.routeId,
@@ -257,8 +279,7 @@ function isLeaveCurrentStepCandidateForPortal_(item, userEmail) {
   if (emails && emails.length) {
     return leaveApproverEmailsInclude_(emails, userEmail);
   }
-  var saved = String(item.approverEmail || item.currentApproverEmail || '').trim().toLowerCase();
-  return !!saved && saved === userEmail;
+  return false;
 }
 
 function explainStepResolveFailure_(step, applicantEmail) {
